@@ -90,6 +90,8 @@
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <RenamePanel v-if="showsRenamePanel" />
   </section>
 </template>
 
@@ -104,9 +106,14 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import RenamePanel from '@/views/RenamePanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
+// 表目录同步与湖表血缘共享批量改名和表名解析面板。
+const showsRenamePanel = computed(() =>
+  ['table_catalog', 'lake_lineage'].includes(meta.key),
+)
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')

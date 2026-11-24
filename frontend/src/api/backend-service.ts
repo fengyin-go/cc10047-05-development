@@ -1,6 +1,16 @@
 import { request } from './client'
 import { moduleMeta } from '@/data/modules'
-import type { ActionResult, EntryRow, OverviewResult, PageResult } from '@/data/types'
+import type {
+  ActionResult,
+  EntryRow,
+  NameResolution,
+  OverviewResult,
+  PageResult,
+  RenameGroupView,
+  RenameItem,
+  RenameOverview,
+  ReviewTodo,
+} from '@/data/types'
 
 export { moduleMeta }
 
@@ -58,4 +68,80 @@ export async function loadOverview(): Promise<OverviewResult> {
   const response = await request('/api/overview')
   if (!response.ok) throw new Error('运营概览读取失败')
   return await response.json()
+}
+
+// ---------------------------------------------------------------------------
+// 批量迁移表名 / 表名映射 / 字段血缘复核待办
+// ---------------------------------------------------------------------------
+
+async function readJson<T>(response: Response, fallback: string): Promise<T> {
+  if (!response.ok) throw new Error(fallback)
+  return (await response.json()) as T
+}
+
+export async function loadRenameOverview(): Promise<RenameOverview> {
+  return readJson<RenameOverview>(
+    await request('/api/table-catalog/renames'),
+    '改名批次读取失败',
+  )
+}
+
+export async function submitRenameBatch(
+  items: RenameItem[],
+  options: { policy?: string; applyOnly?: string[]; remark?: string } = {},
+): Promise<RenameGroupView> {
+  return readJson<RenameGroupView>(
+    await request('/api/table-catalog/renames', {
+      method: 'POST',
+      body: JSON.stringify({
+        items,
+        policy: options.policy ?? 'vacant',
+        apply_only: options.applyOnly ?? null,
+        remark: options.remark ?? '',
+      }),
+    }),
+    '批量迁移表名提交失败',
+  )
+}
+
+export async function applyRenameGroup(
+  groupId: number,
+  applyOnly?: string[],
+): Promise<RenameGroupView> {
+  return readJson<RenameGroupView>(
+    await request(`/api/table-catalog/renames/groups/${groupId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ apply_only: applyOnly ?? null }),
+    }),
+    '补齐改名批次失败',
+  )
+}
+
+export async function loadReviewTodos(): Promise<{ ok: boolean; items: ReviewTodo[] }> {
+  return readJson(
+    await request('/api/table-catalog/lineage-review-todos'),
+    '字段血缘复核待办读取失败',
+  )
+}
+
+export async function reviewTodo(todoId: number, note = ''): Promise<ActionResult> {
+  return readJson(
+    await request(`/api/table-catalog/lineage-review-todos/${todoId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewer: '数据工程组', note }),
+    }),
+    '复核确认失败',
+  )
+}
+
+export async function resolveTableName(
+  name: string,
+  asOf?: string,
+): Promise<NameResolution> {
+  const query = new URLSearchParams({ name })
+  if (asOf) query.set('as_of', asOf)
+  return readJson<NameResolution>(
+    await request(`/api/lake-lineage/resolve?${query.toString()}`),
+    '表名解析失败',
+  )
 }

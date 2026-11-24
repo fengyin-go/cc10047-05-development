@@ -69,6 +69,42 @@ npm run dev
 | 表目录同步 | `table_catalog` | 同步记录 | 记录标识、来源Catalog、目标Catalog |
 | 湖仓审计 | `lake_audit` | 审计报告 | 报告标识、审计范围、审计时间 |
 
+## 批量迁移表名与表名映射
+
+`table_catalog` 与 `lake_lineage` 页面底部共享“批量迁移表名”面板，后端事实层在
+`app/table_registry.py`（表身份与名称绑定）和 `app/name_mapping.py`（改名批次、
+映射记录、复核待办）。
+
+- 每张湖表有稳定的 `table_identity`，改名只切换可读名称，**身份随原表保留**。
+- 一次提交多条改名形成一个批次和逐项映射记录，映射记录可追溯。
+- **整组只生效一次**：同一批次重复提交只补做未完成项，已应用的改名不重复执行。
+- 某一项失败时，其他已成功的名称仍按原身份保留。
+- `B→C` 完成而 `A→B` 未完成时，名称 `B` 按策略处理：
+  - `vacant`：暂空，`B` 解析为 `vacant`；
+  - `compat`：保留原 `B` 的临时只读兼容名。
+  两种状态都至多解析到一张表，且任何可读名称只对应一张表。
+- 名称绑定带生效区间，血缘解析可用 `as_of` 查历史时点，旧表名仍能找到真实来源。
+- 每条表名映射的处置结论同步写入“字段血缘复核待办”。
+
+接口：
+
+```text
+GET  /api/table-catalog/renames                      改名批次总览
+POST /api/table-catalog/renames                      提交改名批次
+GET  /api/table-catalog/renames/groups               批次列表
+POST /api/table-catalog/renames/groups/{id}/apply    重试补齐未完成项
+GET  /api/table-catalog/renames/mappings             表名映射记录
+GET  /api/table-catalog/lineage-review-todos         字段血缘复核待办
+POST /api/table-catalog/lineage-review-todos/{id}/review
+GET  /api/table-catalog/tables                       湖表身份列表
+POST /api/table-catalog/tables                       登记湖表与字段转换
+GET  /api/lake-lineage/resolve?name=B&as_of=...      表名解析证据（含历史时点）
+GET  /api/lake-lineage/name-history?name=B           名称绑定历史
+```
+
+演示数据预置两张湖表 `A`、`B`，各含 `amount` 列，开箱即可走通
+“先只让 `B→C` 成功，再补齐 `A→B`”的完整流程。
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。
